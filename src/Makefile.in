@@ -1,0 +1,30 @@
+CC=@CC@
+CFLAGS=@CFLAGS@
+WARNINGS=-Wall -Wno-trigraphs -Wmissing-field-initializers -Wmissing-prototypes -Wreturn-type -Wmissing-braces -Wparentheses -Wswitch -Wunused-function -Wunused-label -Wunused-parameter -Wunused-variable -Wunused-value -Wuninitialized -Wunknown-pragmas -Wshadow -Wsign-compare
+CPPFLAGS=-I. -I../deps/lauxhlib -I../deps/paho.mqtt.embedded-c/MQTTPacket/src @CPPFLAGS@
+LDFLAGS=@LIBFLAG@
+LIBS=@LIBS@
+TARGET=@PACKAGE@.@LIB_EXTENSION@
+SRC=$(wildcard *.c)
+SRC+=$(wildcard ../deps/paho.mqtt.embedded-c/MQTTPacket/src/*.c)
+OBJ=$(SRC:.c=.@OBJ_EXTENSION@)
+LIBDIR=@LIBDIR@
+
+
+all: $(OBJ) $(TARGET)
+
+%.o: %.c
+	$(CC) $(CFLAGS) $(WARNINGS) $(CPPFLAGS) -c $^
+
+$(TARGET):
+	$(CC) -o $@ *.o $(LDFLAGS) $(LIBS)
+
+install:
+	mkdir -p $(LIBDIR)
+	cp $(TARGET) $(LIBDIR)
+	rm -f *.o $(TARGET)
+
+# cleanup
+clean:
+	rm -f *.o $(TARGET)
+
