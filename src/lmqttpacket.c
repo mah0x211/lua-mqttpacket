@@ -28,6 +28,7 @@ static int connect_lua( lua_State *L )
             return 1;
         }
 
+        errno = ENOBUFS;
         free( buf );
     }
 
