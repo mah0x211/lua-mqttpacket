@@ -9,6 +9,54 @@
 
 
 
+
+static int subscribe_lua( lua_State *L )
+{
+    MQTTString topic[] = { MQTTString_initializer };
+    int qos[] = {0};
+    size_t tlen = 0;
+    unsigned char *buf = NULL;
+
+    // check arguments
+    // topic
+    topic[0].lenstring.data = lauxh_checklstring( L, 1, &tlen );
+    topic[0].lenstring.len = tlen;
+
+    // topic/payload too large
+    if( tlen > INT_MAX ){
+        errno = EOVERFLOW;
+    }
+    else
+    {
+        int len = 0;
+        int buflen = MQTTPacket_len(
+            MQTTSerialize_subscribeLength( 1/*count*/, topic )
+        );
+
+        if( ( buf = malloc( buflen ) ) )
+        {
+            len = MQTTSerialize_subscribe( buf, buflen, 0/*dup*/, 0/*packetid*/,
+                                           1/*count*/, topic, qos );
+
+            if( len > 0 ){
+                lua_pushlstring( L, buf, len );
+                free( buf );
+                return 1;
+            }
+
+            errno = ENOBUFS;
+            free( buf );
+        }
+    }
+
+    // got error
+    lua_pushnil( L );
+    lua_pushstring( L, strerror( errno ) );
+
+    return 2;
+}
+
+
 static int publish_lua( lua_State *L )
 {
     MQTTString topic = MQTTString_initializer;
@@ -115,6 +163,7 @@ LUALIB_API int luaopen_mqttpacket( lua_State *L )
         { "connect", connect_lua },
         { "disconnect", disconnect_lua },
         { "publish", publish_lua },
+        { "subscribe", subscribe_lua },
         { NULL, NULL }
     };
     struct luaL_Reg *ptr = funcs;
