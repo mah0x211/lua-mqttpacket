@@ -8,6 +8,24 @@
 #include <MQTTPacket.h>
 
 
+static int disconnect_lua( lua_State *L )
+{
+    unsigned char *buf[3] = { 0 };
+    int len = MQTTSerialize_disconnect( buf, sizeof( buf ) );
+
+    if( len > 0 ){
+        lua_pushlstring( L, buf, len );
+        return 1;
+    }
+
+    // got error
+    lua_pushnil( L );
+    lua_pushstring( L, strerror( ENOBUFS ) );
+
+    return 2;
+}
+
+
 static int connect_lua( lua_State *L )
 {
     unsigned char *buf = NULL;
@@ -44,6 +62,7 @@ LUALIB_API int luaopen_mqttpacket( lua_State *L )
 {
     struct luaL_Reg funcs[] = {
         { "connect", connect_lua },
+        { "disconnect", disconnect_lua },
         { NULL, NULL }
     };
     struct luaL_Reg *ptr = funcs;
