@@ -30,21 +30,23 @@ static int publish_lua( lua_State *L )
     }
     else
     {
-        int len = 0;
         int buflen = MQTTPacket_len(
             MQTTSerialize_publishLength( 0, topic, plen )
         );
 
         if( ( buf = malloc( buflen ) ) )
         {
-            len = MQTTSerialize_publish( buf, buflen, 0/*dup*/, 0/*qos*/,
+            int len = MQTTSerialize_publish( buf, buflen, 0/*dup*/, 0/*qos*/,
                                          0/*retained*/, 0/*packetid*/, topic,
                                          payload, plen );
+
             if( len > 0 ){
                 lua_pushlstring( L, buf, len );
                 free( buf );
                 return 1;
             }
+
+            errno = ENOBUFS;
             free( buf );
         }
     }
