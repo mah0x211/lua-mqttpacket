@@ -4,10 +4,54 @@
 #include <errno.h>
 #include <stdint.h>
 // lualib
-#include <lauxhlib.h>
-#include <MQTTPacket.h>
+#include "lauxhlib.h"
+#include "MQTTPacket.h"
 
 
+static int unsubscribe_lua( lua_State *L )
+{
+    MQTTString topic[] = { MQTTString_initializer };
+    size_t tlen = 0;
+    unsigned char *buf = NULL;
+
+    // check arguments
+    // topic
+    topic[0].lenstring.data = (char*)lauxh_checklstring( L, 1, &tlen );
+    topic[0].lenstring.len = tlen;
+
+    // topic length too large
+    if( tlen > INT_MAX ){
+        errno = EOVERFLOW;
+    }
+    else
+    {
+        int len = 0;
+        int buflen = MQTTPacket_len(
+            MQTTSerialize_unsubscribeLength( 1/*count*/, topic )
+        );
+
+        if( ( buf = malloc( buflen ) ) )
+        {
+            len = MQTTSerialize_unsubscribe( buf, buflen, 0/*dup*/, 0/*packetid*/,
+                                             1/*count*/, topic );
+
+            if( len > 0 ){
+                lua_pushlstring( L, (const char*)buf, len );
+                free( buf );
+                return 1;
+            }
+
+            errno = ENOBUFS;
+            free( buf );
+        }
+    }
+
+    // got error
+    lua_pushnil( L );
+    lua_pushstring( L, strerror( errno ) );
+
+    return 2;
+}
 
 
 static int subscribe_lua( lua_State *L )
@@ -164,6 +208,7 @@ LUALIB_API int luaopen_mqttpacket( lua_State *L )
         { "disconnect", disconnect_lua },
         { "publish", publish_lua },
         { "subscribe", subscribe_lua },
+        { "unsubscribe", unsubscribe_lua },
         { NULL, NULL }
     };
     struct luaL_Reg *ptr = funcs;
