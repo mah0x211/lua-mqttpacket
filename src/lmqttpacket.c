@@ -153,7 +153,7 @@ static int publish_lua( lua_State *L )
 
 static int disconnect_lua( lua_State *L )
 {
-    unsigned char *buf[3] = { 0 };
+    unsigned char buf[3] = { 0 };
     int len = MQTTSerialize_disconnect( buf, sizeof( buf ) );
 
     if( len > 0 ){
