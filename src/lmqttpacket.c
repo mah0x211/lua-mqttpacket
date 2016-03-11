@@ -63,10 +63,10 @@ static int subscribe_lua( lua_State *L )
 
     // check arguments
     // topic
-    topic[0].lenstring.data = lauxh_checklstring( L, 1, &tlen );
+    topic[0].lenstring.data = (char*)lauxh_checklstring( L, 1, &tlen );
     topic[0].lenstring.len = tlen;
 
-    // topic/payload too large
+    // topic length too large
     if( tlen > INT_MAX ){
         errno = EOVERFLOW;
     }
@@ -83,7 +83,7 @@ static int subscribe_lua( lua_State *L )
                                            1/*count*/, topic, qos );
 
             if( len > 0 ){
-                lua_pushlstring( L, buf, len );
+                lua_pushlstring( L, (const char*)buf, len );
                 free( buf );
                 return 1;
             }
@@ -106,15 +106,15 @@ static int publish_lua( lua_State *L )
     MQTTString topic = MQTTString_initializer;
     size_t tlen = 0;
     size_t plen = 0;
-    const char *payload = NULL;
+    unsigned char *payload = NULL;
     unsigned char *buf = NULL;
 
     // check arguments
     // topic
-    topic.lenstring.data = lauxh_checklstring( L, 1, &tlen );
+    topic.lenstring.data = (char*)lauxh_checklstring( L, 1, &tlen );
     topic.lenstring.len = tlen;
     // payload
-    payload = lauxh_checklstring( L, 2, &plen );
+    payload = (unsigned char*)lauxh_checklstring( L, 2, &plen );
 
     // topic/payload too large
     if( tlen > INT_MAX || plen > INT_MAX ){
@@ -129,11 +129,11 @@ static int publish_lua( lua_State *L )
         if( ( buf = malloc( buflen ) ) )
         {
             int len = MQTTSerialize_publish( buf, buflen, 0/*dup*/, 0/*qos*/,
-                                         0/*retained*/, 0/*packetid*/, topic,
-                                         payload, plen );
+                                             0/*retained*/, 0/*packetid*/, topic,
+                                             payload, plen );
 
             if( len > 0 ){
-                lua_pushlstring( L, buf, len );
+                lua_pushlstring( L, (const char*)buf, len );
                 free( buf );
                 return 1;
             }
@@ -157,7 +157,7 @@ static int disconnect_lua( lua_State *L )
     int len = MQTTSerialize_disconnect( buf, sizeof( buf ) );
 
     if( len > 0 ){
-        lua_pushlstring( L, buf, len );
+        lua_pushlstring( L, (const char*)buf, len );
         return 1;
     }
 
@@ -184,7 +184,7 @@ static int connect_lua( lua_State *L )
         int len = MQTTSerialize_connect( buf, buflen, &opts );
 
         if( len > 0 ){
-            lua_pushlstring( L, buf, len );
+            lua_pushlstring( L, (const char*)buf, len );
             free( buf );
             return 1;
         }
