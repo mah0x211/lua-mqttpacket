@@ -27,42 +27,80 @@
 #include "lmqttpacket.h"
 
 
+
 static int unsubscribe_lua( lua_State *L )
 {
-    MQTTString topic[] = { MQTTString_initializer };
-    size_t tlen = 0;
-    unsigned char *buf = NULL;
+    unsigned char dup = 0;
+    lua_Integer pktid = 0;
+    MQTTString *topics = NULL;// { MQTTString_initializer };
+    size_t ntopic = 0;
 
     // check arguments
-    // topic
-    topic[0].lenstring.data = (char*)lauxh_checklstring( L, 1, &tlen );
-    topic[0].lenstring.len = tlen;
+    lauxh_checktable( L, 1 );
+    lua_settop( L, 1 );
 
-    // topic length too large
-    if( tlen > INT_MAX ){
-        errno = EOVERFLOW;
-    }
-    else
+    // dup flag
+    dup = (unsigned char)lauxh_optbooleanof( L, "dup", 0 );
+
+    // pktid
+    pktid = lauxh_optintegerof( L, "pktid", 0 );
+    printf("pktid %d\n", pktid);
+    lauxh_argcheck(
+        L, pktid >= 0 && pktid <= UINT16_MAX, 1,
+        "pktid must be range of unsigned 16 bit value"
+    );
+
+    // topics
+    lauxh_checktableof( L, "topics" );
+    ntopic = lauxh_rawlen( L, -1 );
+    lauxh_argcheck(
+        L, ntopic > 0, 1, "topics table must be contained least one topic"
+    );
+
+    // create topic container
+    topics = calloc( ntopic, sizeof( MQTTString ) );
+    if( topics )
     {
-        int len = 0;
-        int buflen = MQTTPacket_len(
-            MQTTSerialize_unsubscribeLength( 1/*count*/, topic )
-        );
+        unsigned char *buf = NULL;
+        int buflen = 0;
+        size_t i = 1;
 
+        // get topics
+        for(; i <= ntopic; i++ )
+        {
+            lua_rawgeti( L, -1, i );
+            // invalid value
+            if( !lauxh_isstring( L, -1 ) ){
+                free( topics );
+                lauxh_argerror( L, 1, "topics#%zd must be string", i );
+            }
+            // add to topics
+            topics[i-1].lenstring.data = (char*)lua_tolstring(
+                L, -1, (size_t*)&topics[i-1].lenstring.len
+            );
+            lua_pop( L, 1 );
+        }
+
+        // create packet
+        buflen = MQTTPacket_len(
+            MQTTSerialize_unsubscribeLength( ntopic, topics )
+        );
         if( ( buf = malloc( buflen ) ) )
         {
-            len = MQTTSerialize_unsubscribe( buf, buflen, 0/*dup*/, 0/*packetid*/,
-                                             1/*count*/, topic );
+            int pktlen = MQTTSerialize_unsubscribe( buf, buflen, dup, pktid,
+                                                    ntopic, topics );
 
-            if( len > 0 ){
-                lua_pushlstring( L, (const char*)buf, len );
+            if( pktlen > 0 ){
+                lua_pushlstring( L, (const char*)buf, pktlen );
                 free( buf );
+                free( topics );
                 return 1;
             }
-
             errno = ENOBUFS;
             free( buf );
         }
+
+        free( topics );
     }
 
     // got error
