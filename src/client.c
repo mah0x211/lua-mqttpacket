@@ -32,7 +32,7 @@ static int unsubscribe_lua( lua_State *L )
 {
     unsigned char dup = 0;
     lua_Integer pktid = 0;
-    MQTTString *topics = NULL;// { MQTTString_initializer };
+    MQTTString *topics = NULL;
     size_t ntopic = 0;
 
     // check arguments
@@ -44,7 +44,6 @@ static int unsubscribe_lua( lua_State *L )
 
     // pktid
     pktid = lauxh_optintegerof( L, "pktid", 0 );
-    printf("pktid %d\n", pktid);
     lauxh_argcheck(
         L, pktid >= 0 && pktid <= UINT16_MAX, 1,
         "pktid must be range of unsigned 16 bit value"
