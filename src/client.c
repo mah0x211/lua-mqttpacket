@@ -160,43 +160,72 @@ static int subscribe_lua( lua_State *L )
 static int publish_lua( lua_State *L )
 {
     MQTTString topic = MQTTString_initializer;
-    size_t tlen = 0;
     size_t plen = 0;
     unsigned char *payload = NULL;
     unsigned char *buf = NULL;
+    int buflen = 0;
+    unsigned char dup = 0;
+    unsigned char retain = 0;
+    int qos = 0;
+    unsigned short id = 0;
 
     // check arguments
     // topic
-    topic.lenstring.data = (char*)lauxh_checklstring( L, 1, &tlen );
-    topic.lenstring.len = tlen;
+    topic.lenstring.data = (char*)lauxh_checklstring( L, 1, &plen );
+    // topic too large
+    lauxh_argcheck(
+        L, plen <= INT_MAX, 1, "topic length must be less than INT_MAX"
+    );
+    topic.lenstring.len = plen;
+
     // payload
     payload = (unsigned char*)lauxh_checklstring( L, 2, &plen );
+    // payload too large
+    lauxh_argcheck(
+        L, plen <= INT_MAX, 1, "payload length must be less than INT_MAX"
+    );
 
-    // topic/payload too large
-    if( tlen > INT_MAX || plen > INT_MAX ){
-        errno = EOVERFLOW;
-    }
-    else
+    // options
+    if( lua_gettop( L ) > 2 )
     {
-        int buflen = MQTTPacket_len(
-            MQTTSerialize_publishLength( 0, topic, plen )
+        lua_Integer v = 0;
+
+        lua_settop( L, 3 );
+        lauxh_checktable( L, -1 );
+        dup = lauxh_optbooleanof( L, "dup", 0 );
+        retain = lauxh_optbooleanof( L, "retain", 0 );
+
+        v = lauxh_optintegerof( L, "qos", 0 );
+        // invalid qos value range
+        lauxh_argcheck(
+            L, v >= 0 && v <= 2, 3, "qos must be range of 0 to 2"
         );
+        qos = v;
 
-        if( ( buf = malloc( buflen ) ) )
-        {
-            int len = MQTTSerialize_publish( buf, buflen, 0/*dup*/, 0/*qos*/,
-                                             0/*retained*/, 0/*packetid*/, topic,
-                                             payload, plen );
+        v = lauxh_optintegerof( L, "id", 0 );
+        // invalid qos value range
+        lauxh_argcheck(
+            L, v >= 0 && v <= 0xFFFF, 3, "id must be range of 0 to 65535"
+        );
+        id = v;
 
-            if( len > 0 ){
-                lua_pushlstring( L, (const char*)buf, len );
-                free( buf );
-                return 1;
-            }
+    }
 
-            errno = ENOBUFS;
+    // create buffer
+    buflen = MQTTPacket_len( MQTTSerialize_publishLength( qos, topic, plen ) );
+    if( ( buf = malloc( buflen ) ) )
+    {
+        int len = MQTTSerialize_publish( buf, buflen, dup, qos, retain, id,
+                                         topic, payload, plen );
+
+        if( len > 0 ){
+            lua_pushlstring( L, (const char*)buf, len );
             free( buf );
+            return 1;
         }
+
+        errno = ENOBUFS;
+        free( buf );
     }
 
     // got error
