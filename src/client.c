@@ -27,57 +27,76 @@
 #include "lmqttpacket.h"
 
 
-
 static int unsubscribe_lua( lua_State *L )
 {
-    unsigned char dup = 0;
-    lua_Integer pktid = 0;
+    const int argc = lua_gettop( L );
+    MQTTString topic = MQTTString_initializer;
+    size_t ntopic = 1;
     MQTTString *topics = NULL;
-    size_t ntopic = 0;
+    size_t tlen = 0;
 
-    // check arguments
-    lauxh_checktable( L, 1 );
-    lua_settop( L, 1 );
-
-    // dup flag
-    dup = (unsigned char)lauxh_optbooleanof( L, "dup", 0 );
-
-    // pktid
-    pktid = lauxh_optintegerof( L, "pktid", 0 );
-    lauxh_argcheck(
-        L, pktid >= 0 && pktid <= UINT16_MAX, 1,
-        "pktid must be range of unsigned 16 bit value"
-    );
-
-    // topics
-    lauxh_checktableof( L, "topics" );
-    ntopic = lauxh_rawlen( L, -1 );
-    lauxh_argcheck(
-        L, ntopic > 0, 1, "topics table must be contained least one topic"
-    );
+    // check first arguments
+    topic.lenstring.data = (char*)lauxh_checklstring( L, 1, &tlen );
+    // invalid topic length
+    if( tlen == 0 || tlen > UINT16_MAX ){
+        lauxh_argerror( L, 1, "topic length must be up to UINT16_MAX" );
+    }
+    topic.lenstring.len = tlen;
 
     // create topic container
-    topics = calloc( ntopic, sizeof( MQTTString ) );
+    topics = lua_newuserdata( L, sizeof( MQTTString ) * argc );
     if( topics )
     {
+        unsigned short id = 0;
+        unsigned char dup = 0;
         unsigned char *buf = NULL;
         int buflen = 0;
-        size_t i = 1;
+        int idx = 2;
+
+        // copy first topic
+        topics[0] = topic;
 
         // get topics
-        for(; i <= ntopic; i++ )
+        for(; idx <= argc; idx++ )
         {
-            lua_rawgeti( L, -1, i );
-            // invalid value
-            if( !lauxh_isstring( L, -1 ) ){
-                free( topics );
-                lauxh_argerror( L, 1, "topics#%zd must be string", i );
+            // topic
+            if( lauxh_isstring( L, idx ) )
+            {
+                // add to topics
+                topics[idx-1].cstring = NULL;
+                topics[idx-1].lenstring.data = (char*)lua_tolstring(
+                    L, idx, &tlen
+                );
+                // invalid topic length
+                if( tlen == 0 || tlen > UINT16_MAX ){
+                    lauxh_argerror(
+                        L, idx, "topic length must be up to UINT16_MAX"
+                    );
+                }
+                topics[idx-1].lenstring.len = tlen;
+                ntopic++;
             }
-            // add to topics
-            topics[i-1].lenstring.data = (char*)lua_tolstring(
-                L, -1, (size_t*)&topics[i-1].lenstring.len
-            );
-            lua_pop( L, 1 );
+            // found option at last argument
+            else if( lauxh_istable( L, idx ) && idx == argc )
+            {
+                lua_Integer v = 0;
+
+                // dup flag
+                dup = (unsigned char)lauxh_optbooleanof( L, idx, "dup", dup );
+
+                // id
+                v = lauxh_optintegerof( L, idx, "id", 0 );
+                if( v < 0 || v > UINT16_MAX ){
+                    lauxh_argerror( L, idx, "id must be up to UINT16_MAX" );
+                }
+                id = v;
+            }
+            // invalid value type
+            else {
+                lauxh_argerror(
+                    L, idx, "arg#%zd must be topic string or option table", idx
+                );
+            }
         }
 
         // create packet
@@ -86,20 +105,17 @@ static int unsubscribe_lua( lua_State *L )
         );
         if( ( buf = malloc( buflen ) ) )
         {
-            int pktlen = MQTTSerialize_unsubscribe( buf, buflen, dup, pktid,
-                                                    ntopic, topics );
+            int len = MQTTSerialize_unsubscribe( buf, buflen, dup, id,
+                                                 ntopic, topics );
 
-            if( pktlen > 0 ){
-                lua_pushlstring( L, (const char*)buf, pktlen );
+            if( len > 0 ){
+                lua_pushlstring( L, (const char*)buf, len );
                 free( buf );
-                free( topics );
                 return 1;
             }
             errno = ENOBUFS;
             free( buf );
         }
-
-        free( topics );
     }
 
     // got error
@@ -174,7 +190,7 @@ static int publish_lua( lua_State *L )
     topic.lenstring.data = (char*)lauxh_checklstring( L, 1, &plen );
     // topic too large
     lauxh_argcheck(
-        L, plen <= INT_MAX, 1, "topic length must be less than INT_MAX"
+        L, plen <= UINT16_MAX, 1, "topic length must be less than UINT16_MAX"
     );
     topic.lenstring.len = plen;
 
@@ -192,23 +208,20 @@ static int publish_lua( lua_State *L )
 
         lua_settop( L, 3 );
         lauxh_checktable( L, -1 );
-        dup = lauxh_optbooleanof( L, "dup", 0 );
-        retain = lauxh_optbooleanof( L, "retain", 0 );
+        dup = lauxh_optbooleanof( L, 3, "dup", 0 );
+        retain = lauxh_optbooleanof( L, 3, "retain", 0 );
 
-        v = lauxh_optintegerof( L, "qos", 0 );
+        v = lauxh_optintegerof( L, 3, "qos", 0 );
         // invalid qos value range
-        lauxh_argcheck(
-            L, v >= 0 && v <= 2, 3, "qos must be range of 0 to 2"
-        );
+        lauxh_argcheck( L, v >= 0 && v <= 2, 3, "qos must be range of 0 to 2" );
         qos = v;
 
-        v = lauxh_optintegerof( L, "id", 0 );
+        v = lauxh_optintegerof( L, 3, "id", 0 );
         // invalid qos value range
         lauxh_argcheck(
-            L, v >= 0 && v <= 0xFFFF, 3, "id must be range of 0 to 65535"
+            L, v >= 0 && v <= UINT16_MAX, 3, "id must be up to UINT16_MAX"
         );
         id = v;
-
     }
 
     // create buffer
